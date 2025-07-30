@@ -6,7 +6,8 @@ import "dotenv/config";
 // LangChain imports
 import { ChatGoogleGenerativeAI } from "@langchain/google-genai";
 import { GoogleGenerativeAIEmbeddings } from "@langchain/google-genai";
-import { FaissStore } from "@langchain/community/vectorstores/faiss";
+// --- CHANGE: Using the simpler MemoryVectorStore ---
+import { MemoryVectorStore } from "langchain/vectorstores/memory";
 import { RecursiveCharacterTextSplitter } from "langchain/text_splitter";
 import { RunnableSequence } from "@langchain/core/runnables";
 import { PromptTemplate } from "@langchain/core/prompts";
@@ -22,17 +23,15 @@ app.use(cors());
 app.use(express.json());
 
 // --- Setup LangChain RAG (Retrieval-Augmented Generation) ---
-
-// --- FIX: Changed 'modelName' to 'model' ---
 const model = new ChatGoogleGenerativeAI({
   apiKey: process.env.GOOGLE_GEMINI_API_KEY,
-  model: "gemini-pro", // Correct property name is 'model'
+  model: "gemini-pro",
   maxOutputTokens: 2048,
 });
 
 const embeddings = new GoogleGenerativeAIEmbeddings({
   apiKey: process.env.GOOGLE_GEMINI_API_KEY,
-  model: "embedding-001", // Correct property name is 'model'
+  model: "embedding-001",
 });
 
 // Create a document from your CV text
@@ -45,8 +44,8 @@ const textSplitter = new RecursiveCharacterTextSplitter({
 });
 const docs = await textSplitter.splitDocuments([document]);
 
-// Create a vector store from the chunks
-const vectorStore = await FaissStore.fromDocuments(docs, embeddings);
+// --- CHANGE: Create a vector store from the chunks using MemoryVectorStore ---
+const vectorStore = await MemoryVectorStore.fromDocuments(docs, embeddings);
 const retriever = vectorStore.asRetriever();
 
 // Create a prompt template
