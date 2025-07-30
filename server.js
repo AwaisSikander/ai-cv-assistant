@@ -89,6 +89,10 @@ app.post("/ask", async (req, res) => {
   }
 });
 
+app.get("/working", async (req, res) => {
+  return res.status(200).json({ success: "It is working." });
+});
+
 // --- Start the Server ---
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
