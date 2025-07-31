@@ -1,5 +1,4 @@
-// cv-data.js
-export const cvText = `
+module.exports.cvText = `
     AWAIS SIKANDER
     Lead Full Stack Developer
     Sheikhupura, Pakistan | +923024210348 | sikande007@gmail.com
