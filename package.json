@@ -20,6 +20,7 @@
     "dotenv": "^17.2.1",
     "express": "^5.1.0",
     "faiss-node": "^0.5.1",
-    "langchain": "^0.3.30"
+    "langchain": "^0.3.30",
+    "sharp": "^0.34.3"
   }
 }
