@@ -8,6 +8,7 @@ const path = require("path");
 const { ChatGoogleGenerativeAI } = require("@langchain/google-genai");
 const { PromptTemplate } = require("@langchain/core/prompts");
 const { StringOutputParser } = require("@langchain/core/output_parsers");
+const { JsonOutputParser } = require("@langchain/core/output_parsers");
 const {
   RunnableSequence,
   RunnablePassthrough,
@@ -20,76 +21,71 @@ const WP_PASSWORD = process.env.WP_PASSWORD;
 const credentials = Buffer.from(`${WP_USER}:${WP_PASSWORD}`).toString("base64");
 const wpHeaders = { Authorization: `Basic ${credentials}` };
 
-// --- LangChain Setup for Content Generation ---
+// --- LangChain Setup ---
 const model = new ChatGoogleGenerativeAI({
   apiKey: process.env.GOOGLE_GEMINI_API_KEY,
-  model: "gemini-2.5-flash",
+  model: "gemini-1.5-flash",
 });
 
-const promptTemplate = PromptTemplate.fromTemplate(
-  `You are Awais Sikander, a Lead Full Stack Developer and a Blockchain expert. Your blog, askawais.com, provides in-depth technical tutorials and insights for other developers.
-    
-    Generate a complete, high-quality, and SEO-friendly blog post about "{topic}". The post must be written in a professional yet approachable tone, as if it were written by a seasoned developer.
-    
-    Ensure the content is well-structured with clear headings (e.g., <h2>, <h3>) and valid HTML markup. The "body" should be a single string containing all HTML. Do not use Markdown outside of the JSON object.
-    
-    Provide the output as a single, clean JSON object.
-    
-    Example JSON structure:
-    {{
-      "title": "Your Blog Post Title Here",
-      "body": "<p>This is the first paragraph...</p><h2>A Sub-heading</h2><p>Content for the sub-heading.</p>",
-      "excerpt": "A short, 1-2 sentence summary of the post."
-    }}
-    
-    Strictly follow this JSON format. All values must be strings.
-    
-    Post Topic: {topic}
-    
-    JSON Output:`
+// --- AI #1: The Visionary Title Brainstormer (Upgraded with Internal Brainstorming) ---
+const titlePromptTemplate = PromptTemplate.fromTemplate(
+  `You are a Principal Engineer and Content Strategist, tasked with generating visionary blog post ideas.
+
+   Your goal is to generate 5 expert-level titles based on the broad technical domain of: "{domain}".
+
+   **Your thought process MUST follow these two steps:**
+   1.  **Internal Brainstorming:** First, silently and internally, brainstorm a list of advanced, non-obvious sub-topics within the '{domain}'. Think at a micro and nano level about performance, security, architectural patterns, and future trends. For example, for 'Node.js', you might internally brainstorm 'libuv internals', 'memory leak patterns in async contexts', 'multi-tenancy security models', 'WASI integration'.
+   2.  **Title Generation:** Second, using your brainstormed list of advanced sub-topics, generate 5 highly specific, visionary titles that would capture the attention of a Staff-level engineer.
+
+   **CRITICAL INSTRUCTIONS:**
+   - AVOID generating titles about the broad domain itself (e.g., "What is Node.js?").
+   - AVOID any beginner or intermediate-level concepts.
+   - Your final output MUST be only a clean JSON object with a single key "titles" which contains an array of 5 title strings.
+   - You MUST avoid generating titles that are thematically similar to the following already published titles:
+   <published_titles>
+   {published_titles}
+   </published_titles>
+   `
 );
 
-const generationChain = RunnableSequence.from([
-  {
-    topic: new RunnablePassthrough(),
-  },
-  promptTemplate,
+const titleGenerationChain = RunnableSequence.from([
+  titlePromptTemplate,
+  model,
+  new JsonOutputParser(),
+]);
+
+// --- AI #2: The Expert Article Writer ---
+const articlePromptTemplate = PromptTemplate.fromTemplate(
+  `You are Awais Sikander, a Lead Full Stack Developer and Blockchain expert. Your blog, askawais.com, provides elite-level technical articles.
+   
+   Generate a complete, in-depth, and SEO-friendly blog post for the exact title: "{title}".
+   The post must be written with the authority of a seasoned architect, assuming the reader is an experienced engineer. Use professional, well-structured HTML.
+
+   Provide the output as a single, clean JSON object with "body" and "excerpt" keys.
+   
+   JSON Output:`
+);
+
+const articleGenerationChain = RunnableSequence.from([
+  articlePromptTemplate,
   model,
   new StringOutputParser(),
 ]);
-// --- End of LangChain Setup ---
 
-// ⬇️ THE FINAL FIX IS IN THIS FUNCTION ⬇️
-async function generateContent(topic, log) {
-  log(`Generating content for topic: ${topic}`);
+async function generateContent(title, log) {
+  log(`Generating content for title: ${title}`);
   try {
-    const output = await generationChain.invoke({ topic: topic });
-
-    // ✅ FIX: Use a regular expression to clean up the JSON string before parsing.
-    const cleanOutput = output
-      .replace(/```json/g, "")
-      .replace(/```/g, "")
-      .trim();
-
-    const jsonStart = cleanOutput.indexOf("{");
-    const jsonEnd = cleanOutput.lastIndexOf("}") + 1;
-    const jsonString = cleanOutput.substring(jsonStart, jsonEnd);
-
-    // ✅ FIX: Replace bad control characters inside the string
-    const sanitizedJsonString = jsonString.replace(
-      /[\u0000-\u001F\u007F-\u009F]/g,
-      ""
-    );
-
-    const result = JSON.parse(sanitizedJsonString);
+    const output = await articleGenerationChain.invoke({ title: title });
+    const jsonStart = output.indexOf("{");
+    const jsonEnd = output.lastIndexOf("}") + 1;
+    const jsonString = output.substring(jsonStart, jsonEnd);
+    const result = JSON.parse(jsonString);
     return result;
   } catch (error) {
     log(`Error generating content: ${error.message}`);
-    console.error("Full content generation error:", error);
     return null;
   }
 }
-// ⬆️ THE FINAL FIX IS IN THIS FUNCTION ⬆️
 
 async function generateAndUploadImage(title, log) {
   log(`Adding title to default background: "${title}"`);
@@ -149,10 +145,11 @@ async function generateAndUploadImage(title, log) {
         <style>
           .title { font-family: 'Helvetica', 'Verdana', sans-serif; font-size: 90px; font-weight: bold; fill: #333333; text-shadow: 2px 2px 4px rgba(0,0,0,0.3); }
         </style>
-        <text x="50%" y="50%" dominant-baseline="middle" text-anchor="middle" class="title">
+        <text x="50%" y="50%" alignment-baseline="middle" text-anchor="middle" class="title">
           ${wrappedTitle}
         </text>
       </svg>`;
+    //  ^^^ THE ONLY CHANGE IS HERE: dominant-baseline="middle" was replaced with alignment-baseline="middle"
 
     const imageBuffer = await sharp(backgroundImagePath)
       .composite([{ input: Buffer.from(svgText), gravity: "center" }])
@@ -195,33 +192,102 @@ async function createPost(postContent, imageId, log) {
         excerpt: postContent.excerpt,
         status: "publish",
         featured_media: imageId,
+        categories: postContent.categoryIds,
       },
       { headers: wpHeaders }
     );
     log(`✅ Post published successfully! URL: ${response.data.link}`);
+    return true;
   } catch (error) {
     log(
       `Error creating post: ${
         error.response ? JSON.stringify(error.response.data) : error.message
       }`
     );
+    return false;
   }
 }
 
+// =========================================================================================
+// START: MAIN ORCHESTRATION LOGIC
+// =========================================================================================
 async function main(log = console.log) {
   log(`🚀 Starting the auto-blogger job at ${new Date().toLocaleString()}`);
-  const topics = [
-    "Building a simple DAO with Solidity",
-    "Microfrontend architecture deep dive",
-    "Getting started with AWS Lambda for Node.js developers",
-  ];
-  const randomTopic = topics[Math.floor(Math.random() * topics.length)];
 
-  const postContent = await generateContent(randomTopic, log);
-  if (postContent && postContent.title) {
+  // Simplified to broad technical domains. The AI will brainstorm specifics.
+  const topicDomains = [
+    { domain: "Advanced JavaScript", categoryIds: [10] },
+    { domain: "React.js ", categoryIds: [8, 18] },
+    { domain: "Vue.js ", categoryIds: [4] },
+    { domain: "Node.js", categoryIds: [7] },
+    { domain: "Laravel", categoryIds: [9, 14] },
+    { domain: "Modern PHP", categoryIds: [14] },
+    { domain: "Database ", categoryIds: [15] },
+    { domain: "Solidity & Smart Contract", categoryIds: [11] },
+    { domain: "Advanced Hardhat & Web3 Tooling", categoryIds: [12, 11] },
+    { domain: "DeFi & Oracle Technology (Chainlink)", categoryIds: [11] },
+    { domain: "Advanced NFT Standards", categoryIds: [11] },
+    { domain: "DAO Governance Models", categoryIds: [11, 18] },
+    { domain: "Cloud & Serverless Architecture", categoryIds: [18] },
+    { domain: "Containerization & CI/CD (Docker)", categoryIds: [18] },
+    { domain: "Sass Or Erp", categoryIds: [1] },
+    { domain: "Latest Mysql oR Mongodb ", categoryIds: [1] },
+    {
+      domain: "Vue & React Optimization or Laravel & Nodejs Optimization",
+      categoryIds: [1],
+    },
+    {
+      domain: "Tailwindcss or Modern Ui libraries or framework",
+      categoryIds: [1],
+    },
+    {
+      domain: "Artificial Intelligence in Web Development",
+      categoryIds: [6, 18],
+    },
+  ];
+
+  const LOG_FILE = path.join(__dirname, "published_titles.log");
+  let publishedTitles = [];
+  if (fs.existsSync(LOG_FILE)) {
+    publishedTitles = fs
+      .readFileSync(LOG_FILE, "utf-8")
+      .split("\n")
+      .filter(Boolean);
+  }
+
+  // Pick a domain, brainstorm a title, generate content, and post
+  const randomDomainItem =
+    topicDomains[Math.floor(Math.random() * topicDomains.length)];
+  log(`Selected domain: "${randomDomainItem.domain}"`);
+
+  log("Brainstorming visionary titles from the selected domain...");
+  const titleResponse = await titleGenerationChain.invoke({
+    domain: randomDomainItem.domain,
+    published_titles: publishedTitles.join("\n") || "N/A",
+  });
+
+  const uniqueTitles = titleResponse.titles;
+  if (!uniqueTitles || uniqueTitles.length === 0) {
+    log(
+      "Could not brainstorm any new unique titles for this domain. Try again later or add more domains."
+    );
+    return;
+  }
+  const selectedTitle =
+    uniqueTitles[Math.floor(Math.random() * uniqueTitles.length)];
+
+  const postContent = await generateContent(selectedTitle, log);
+  if (postContent) {
+    postContent.title = selectedTitle;
+    postContent.categoryIds = randomDomainItem.categoryIds;
+
     const imageId = await generateAndUploadImage(postContent.title, log);
     if (imageId) {
-      await createPost(postContent, imageId, log);
+      const postCreated = await createPost(postContent, imageId, log);
+      if (postCreated) {
+        fs.appendFileSync(LOG_FILE, selectedTitle + "\n");
+        log(`✅ Title "${selectedTitle}" has been logged as published.`);
+      }
     } else {
       log("Skipping post creation due to image generation failure.");
     }
@@ -230,5 +296,12 @@ async function main(log = console.log) {
   }
   log("✨ Blogger job finished.");
 }
+// =========================================================================================
+// END: MAIN LOGIC
+// =========================================================================================
 
 module.exports = { main };
+
+if (require.main === module) {
+  main();
+}
