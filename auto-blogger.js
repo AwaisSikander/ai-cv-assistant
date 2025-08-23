@@ -58,12 +58,13 @@ const titleGenerationChain = RunnableSequence.from([
 const articlePromptTemplate = PromptTemplate.fromTemplate(
   `You are Awais Sikander, a Lead Full Stack Developer and Blockchain expert. Your blog, askawais.com, provides elite-level technical articles.
    
-   Your task is to write the **body content** for a blog post.
+   Your task is to write the **full body content** for a blog post, with complete paragraphs.
    The title of the post is: "{title}".
 
-   **CRITICAL INSTRUCTION: Do NOT repeat the main title in your response.** The blog's theme will display the main title automatically. Your response should begin directly with the first paragraph of the article.
-   
-   The content must be in-depth, professional, well-structured with HTML subheadings (<h2>, <h3>), and written for experienced engineers.
+   **CRITICAL INSTRUCTIONS:**
+   1.  **Do NOT repeat the main title** in your response. Begin directly with the first paragraph.
+   2.  **Do NOT write an outline or just a list of topics.** You must write a complete article with detailed, flowing paragraphs under each subheading.
+   3.  The content must be in-depth, professional, and well-structured with HTML subheadings (<h2>, <h3>).
 
    Provide the output as a single, clean JSON object with "body" and "excerpt" keys.
    
@@ -196,32 +197,37 @@ async function generateAndUploadImage(title, log) {
 }
 
 // =========================================================================================
-// START: NEW HELPER FUNCTION TO CONVERT HTML TO GUTENBERG BLOCKS
+// START: ROBUST GUTENBERG BLOCK CONVERTER
 // =========================================================================================
 function convertToGutenbergBlocks(html) {
-  // This regex finds all <p> and <h2/h3> tags.
-  const elementRegex = /(<(h[2-3]|p).*?>.*?<\/(h[2-3]|p)>)/g;
-  const elements = html.match(elementRegex);
+  // This regex splits the HTML by the start of a heading or paragraph tag,
+  // which is more robust than matching full tags.
+  const chunks = html.split(/(?=<h[2-3]|<p)/);
 
-  if (!elements) {
-    // Fallback for unexpected HTML structure
-    return `<p>${html}</p>`;
-  }
+  return chunks
+    .map((chunk) => {
+      const trimmedChunk = chunk.trim();
+      if (!trimmedChunk) {
+        return ""; // Ignore empty chunks
+      }
 
-  return elements
-    .map((element) => {
-      if (element.startsWith("<h")) {
-        return `${element}`;
+      if (trimmedChunk.startsWith("<h")) {
+        return `${trimmedChunk}`;
       }
-      if (element.startsWith("<p")) {
-        return `${element}`;
+
+      if (trimmedChunk.startsWith("<p")) {
+        return `${trimmedChunk}`;
       }
-      return ""; // Should not happen with the current regex
+
+      // This is the crucial fallback: if a chunk of text is not in a tag,
+      // we wrap it in <p> tags and then convert it to a paragraph block.
+      return `<p>${trimmedChunk}</p>`;
     })
+    .filter(Boolean) // Filter out any empty strings that might have been created
     .join("\n\n");
 }
 // =========================================================================================
-// END: NEW HELPER FUNCTION
+// END: ROBUST GUTENBERG BLOCK CONVERTER
 // =========================================================================================
 
 async function createPost(postContent, imageId, log) {
@@ -231,7 +237,7 @@ async function createPost(postContent, imageId, log) {
       `${WP_URL}/wp-json/wp/v2/posts`,
       {
         title: postContent.title,
-        content: postContent.body, // This will now be the Gutenberg-formatted content
+        content: postContent.body, // This will now be the robustly-formatted Gutenberg content
         excerpt: postContent.excerpt,
         status: "publish",
         featured_media: imageId,
@@ -256,6 +262,7 @@ async function createPost(postContent, imageId, log) {
 // =========================================================================================
 async function main(log = console.log) {
   log(`🚀 Starting the auto-blogger job at ${new Date().toLocaleString()}`);
+
   const topicDomains = [
     { domain: "Advanced JavaScript", categoryIds: [10] },
     { domain: "React.js ", categoryIds: [8, 18] },
@@ -318,7 +325,7 @@ async function main(log = console.log) {
 
   const postContent = await generateContent(selectedTitle, log);
   if (postContent) {
-    // ADDED: Convert the raw HTML body to Gutenberg-compatible blocks
+    // Convert the raw HTML body to Gutenberg-compatible blocks
     postContent.body = convertToGutenbergBlocks(postContent.body);
 
     postContent.title = selectedTitle;
