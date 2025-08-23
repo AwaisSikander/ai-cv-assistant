@@ -27,7 +27,7 @@ const model = new ChatGoogleGenerativeAI({
   model: "gemini-1.5-flash",
 });
 
-// --- AI #1: The Visionary Title Brainstormer (Upgraded with Internal Brainstorming) ---
+// --- AI #1: The Visionary Title Brainstormer ---
 const titlePromptTemplate = PromptTemplate.fromTemplate(
   `You are a Principal Engineer and Content Strategist, tasked with generating visionary blog post ideas.
 
@@ -58,8 +58,12 @@ const titleGenerationChain = RunnableSequence.from([
 const articlePromptTemplate = PromptTemplate.fromTemplate(
   `You are Awais Sikander, a Lead Full Stack Developer and Blockchain expert. Your blog, askawais.com, provides elite-level technical articles.
    
-   Generate a complete, in-depth, and SEO-friendly blog post for the exact title: "{title}".
-   The post must be written with the authority of a seasoned architect, assuming the reader is an experienced engineer. Use professional, well-structured HTML.
+   Your task is to write the **body content** for a blog post.
+   The title of the post is: "{title}".
+
+   **CRITICAL INSTRUCTION: Do NOT repeat the main title in your response.** The blog's theme will display the main title automatically. Your response should begin directly with the first paragraph of the article.
+   
+   The content must be in-depth, professional, well-structured with HTML subheadings (<h2>, <h3>), and written for experienced engineers.
 
    Provide the output as a single, clean JSON object with "body" and "excerpt" keys.
    
@@ -96,8 +100,8 @@ async function generateAndUploadImage(title, log) {
     }
     const width = 1920;
     const height = 1080;
-    const fontSize = 90; // Define font size for calculations
-    const lineHeight = 1.2; // Define line height multiplier for calculations
+    const fontSize = 90;
+    const lineHeight = 1.2;
 
     const escapeXml = (unsafe) => {
       return unsafe.replace(/[<>&'"]/g, (c) => {
@@ -120,7 +124,6 @@ async function generateAndUploadImage(title, log) {
 
     const escapedTitle = escapeXml(title);
 
-    // This helper function now just returns the array of lines
     function wrapText(text, charsPerLine) {
       const words = text.split(" ");
       let lines = [];
@@ -140,7 +143,6 @@ async function generateAndUploadImage(title, log) {
     const lines = wrapText(escapedTitle, 30);
     const lineCount = lines.length;
 
-    // Create the <tspan> elements for each line
     const tspanElements = lines
       .map(
         (line, index) =>
@@ -150,8 +152,6 @@ async function generateAndUploadImage(title, log) {
       )
       .join("");
 
-    // **THE FIX:** Calculate the vertical offset to manually center the text block.
-    // This shifts the entire block up by half its height.
     const totalTextBlockHeight = (lineCount - 1) * lineHeight;
     const yOffset = -(totalTextBlockHeight / 2);
 
@@ -195,6 +195,35 @@ async function generateAndUploadImage(title, log) {
   }
 }
 
+// =========================================================================================
+// START: NEW HELPER FUNCTION TO CONVERT HTML TO GUTENBERG BLOCKS
+// =========================================================================================
+function convertToGutenbergBlocks(html) {
+  // This regex finds all <p> and <h2/h3> tags.
+  const elementRegex = /(<(h[2-3]|p).*?>.*?<\/(h[2-3]|p)>)/g;
+  const elements = html.match(elementRegex);
+
+  if (!elements) {
+    // Fallback for unexpected HTML structure
+    return `<p>${html}</p>`;
+  }
+
+  return elements
+    .map((element) => {
+      if (element.startsWith("<h")) {
+        return `${element}`;
+      }
+      if (element.startsWith("<p")) {
+        return `${element}`;
+      }
+      return ""; // Should not happen with the current regex
+    })
+    .join("\n\n");
+}
+// =========================================================================================
+// END: NEW HELPER FUNCTION
+// =========================================================================================
+
 async function createPost(postContent, imageId, log) {
   log(`Creating post: ${postContent.title}`);
   try {
@@ -202,7 +231,7 @@ async function createPost(postContent, imageId, log) {
       `${WP_URL}/wp-json/wp/v2/posts`,
       {
         title: postContent.title,
-        content: postContent.body,
+        content: postContent.body, // This will now be the Gutenberg-formatted content
         excerpt: postContent.excerpt,
         status: "publish",
         featured_media: imageId,
@@ -227,8 +256,6 @@ async function createPost(postContent, imageId, log) {
 // =========================================================================================
 async function main(log = console.log) {
   log(`🚀 Starting the auto-blogger job at ${new Date().toLocaleString()}`);
-
-  // Simplified to broad technical domains. The AI will brainstorm specifics.
   const topicDomains = [
     { domain: "Advanced JavaScript", categoryIds: [10] },
     { domain: "React.js ", categoryIds: [8, 18] },
@@ -269,7 +296,6 @@ async function main(log = console.log) {
       .filter(Boolean);
   }
 
-  // Pick a domain, brainstorm a title, generate content, and post
   const randomDomainItem =
     topicDomains[Math.floor(Math.random() * topicDomains.length)];
   log(`Selected domain: "${randomDomainItem.domain}"`);
@@ -292,6 +318,9 @@ async function main(log = console.log) {
 
   const postContent = await generateContent(selectedTitle, log);
   if (postContent) {
+    // ADDED: Convert the raw HTML body to Gutenberg-compatible blocks
+    postContent.body = convertToGutenbergBlocks(postContent.body);
+
     postContent.title = selectedTitle;
     postContent.categoryIds = randomDomainItem.categoryIds;
 
@@ -316,6 +345,7 @@ async function main(log = console.log) {
 
 module.exports = { main };
 
+// This check ensures main() only runs when the script is executed directly
 if (require.main === module) {
   main();
 }
