@@ -96,6 +96,8 @@ async function generateAndUploadImage(title, log) {
     }
     const width = 1920;
     const height = 1080;
+    const fontSize = 90; // Define font size for calculations
+    const lineHeight = 1.2; // Define line height multiplier for calculations
 
     const escapeXml = (unsafe) => {
       return unsafe.replace(/[<>&'"]/g, (c) => {
@@ -118,6 +120,7 @@ async function generateAndUploadImage(title, log) {
 
     const escapedTitle = escapeXml(title);
 
+    // This helper function now just returns the array of lines
     function wrapText(text, charsPerLine) {
       const words = text.split(" ");
       let lines = [];
@@ -131,25 +134,36 @@ async function generateAndUploadImage(title, log) {
         }
       }
       lines.push(currentLine);
-      return lines
-        .map(
-          (line, index) =>
-            `<tspan x="50%" dy="${index === 0 ? 0 : "1.2em"}">${line}</tspan>`
-        )
-        .join("");
+      return lines;
     }
 
-    const wrappedTitle = wrapText(escapedTitle, 30);
+    const lines = wrapText(escapedTitle, 30);
+    const lineCount = lines.length;
+
+    // Create the <tspan> elements for each line
+    const tspanElements = lines
+      .map(
+        (line, index) =>
+          `<tspan x="50%" dy="${
+            index === 0 ? 0 : `${lineHeight}em`
+          }">${line}</tspan>`
+      )
+      .join("");
+
+    // **THE FIX:** Calculate the vertical offset to manually center the text block.
+    // This shifts the entire block up by half its height.
+    const totalTextBlockHeight = (lineCount - 1) * lineHeight;
+    const yOffset = -(totalTextBlockHeight / 2);
+
     const svgText = `
       <svg width="${width}" height="${height}">
         <style>
-          .title { font-family: 'Helvetica', 'Verdana', sans-serif; font-size: 90px; font-weight: bold; fill: #333333; text-shadow: 2px 2px 4px rgba(0,0,0,0.3); }
+          .title { font-family: 'Helvetica', 'Verdana', sans-serif; font-size: ${fontSize}px; font-weight: bold; fill: #333333; text-shadow: 2px 2px 4px rgba(0,0,0,0.3); }
         </style>
-        <text x="50%" y="50%" alignment-baseline="middle" text-anchor="middle" class="title">
-          ${wrappedTitle}
+        <text x="50%" y="50%" dy="${yOffset}em" text-anchor="middle" class="title">
+          ${tspanElements}
         </text>
       </svg>`;
-    //  ^^^ THE ONLY CHANGE IS HERE: dominant-baseline="middle" was replaced with alignment-baseline="middle"
 
     const imageBuffer = await sharp(backgroundImagePath)
       .composite([{ input: Buffer.from(svgText), gravity: "center" }])
