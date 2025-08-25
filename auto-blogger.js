@@ -65,6 +65,9 @@ const articlePromptTemplate = PromptTemplate.fromTemplate(
    1.  **Do NOT repeat the main title** in your response. Begin directly with the first paragraph.
    2.  **Do NOT write an outline or just a list of topics.** You must write a complete article with detailed, flowing paragraphs under each subheading.
    3.  The content must be in-depth, professional, and well-structured with HTML subheadings (<h2>, <h3>).
+   4.  **Include expert-level code examples** where appropriate to illustrate your points. Wrap all code blocks in \`<pre><code class="language-javascript">...\</code></pre>\` tags, replacing 'javascript' with the appropriate language (e.g., 'solidity', 'php', 'bash').
+
+   - The "excerpt" must be a short and compelling hook. It should pose a thought-provoking question or make a bold statement that makes an expert want to click, read the full article, and comment.  
 
    Provide the output as a single, clean JSON object with "body" and "excerpt" keys.
    
