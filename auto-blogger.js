@@ -24,7 +24,7 @@ const wpHeaders = { Authorization: `Basic ${credentials}` };
 // --- LangChain Setup ---
 const model = new ChatGoogleGenerativeAI({
   apiKey: process.env.GOOGLE_GEMINI_API_KEY,
-  model: "gemini-1.5-flash",
+  model: "gemini-2.5-flash",
 });
 
 // --- AI #1: The Visionary Title Brainstormer ---

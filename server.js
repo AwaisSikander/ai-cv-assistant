@@ -25,7 +25,8 @@ const corsOptions = {
   origin: "https://askawais.com",
   optionsSuccessStatus: 200,
 };
-app.use(cors(corsOptions));
+
+app.use(cors());
 app.use(express.json());
 
 async function initializeApp() {
@@ -78,6 +79,30 @@ async function initializeApp() {
       res.status(500).json({ error: "Failed to process your request." });
     }
   });
+
+  // IMAGE PR+MPT DOWNLOADER EXTENSION SERVER LOGIC
+  app.post("/create-image-prompt", async (req, res) => {
+    try {
+      const { prompt } = req.body;
+      if (!prompt) {
+        return res.status(400).json({ error: "A prompt is required." });
+      }
+      const model = new ChatGoogleGenerativeAI({
+        apiKey: process.env.GOOGLE_GEMINI_API_KEY,
+        model: "gemini-2.5-flash",
+      });
+
+      const result = await model.invoke(prompt);
+      const finalImagePrompt = result.content; // Assuming result is not a stream
+
+      // Send the final prompt back to the Chrome extension
+      res.json({ imagePrompt: finalImagePrompt });
+    } catch (error) {
+      console.error("Error generating image prompt:", error);
+      res.status(500).json({ error: "Failed to generate prompt." });
+    }
+  });
+  // IMAGE DOWNLOADER EXTENSION BACKGROUND SCRIPT LOGIC
 
   // Auto-Blogger Trigger endpoint
   app.get("/run-blogger", async (req, res) => {
